@@ -41,39 +41,47 @@
     }
     
     // ========================================================================
-    // Find QRIS Element
+    // Find QRIS Element (EXCLUDE our Poppay form!)
     // ========================================================================
     function findQRISElement() {
-        // Find by text "Qris"
+        // SKIP if element is inside our Poppay container
+        function isInsidePoppay(element) {
+            return element.closest('#ug-poppay-qris-full') !== null;
+        }
+        
+        // Find by image (MOST SPECIFIC - qrisoke logo)
+        const qrisImages = Array.from(document.querySelectorAll('img')).filter(img => 
+            img.alt && (img.alt.toLowerCase().includes('qrisoke') || 
+                       img.src && img.src.toLowerCase().includes('qrisoke'))
+        );
+        
+        if (qrisImages.length > 0 && !isInsidePoppay(qrisImages[0])) {
+            const container = qrisImages[0].closest('div[class*="hvpgtl"]') ||
+                            qrisImages[0].closest('div[class*="root"]') ||
+                            qrisImages[0].closest('li');
+            
+            if (container && !isInsidePoppay(container)) {
+                console.log('✅ [UG-QRIS] Original QRIS found (qrisoke image)');
+                return container;
+            }
+        }
+        
+        // Find by text "Qris" (but NOT our Poppay text!)
         const allDivs = document.querySelectorAll('div');
         for (const div of allDivs) {
+            // Skip if inside our Poppay container
+            if (isInsidePoppay(div)) continue;
+            
             const text = div.textContent.trim().toLowerCase();
             if (text === 'qris' || text === 'qrisoke') {
                 const container = div.closest('div[class*="hvpgtl"]') || 
                                 div.closest('div[class*="root"]') ||
                                 div.closest('li');
                 
-                if (container) {
-                    console.log('✅ [UG-QRIS] QRIS element found');
+                if (container && !isInsidePoppay(container)) {
+                    console.log('✅ [UG-QRIS] Original QRIS found (text)');
                     return container;
                 }
-            }
-        }
-        
-        // Find by image
-        const qrisImages = Array.from(document.querySelectorAll('img')).filter(img => 
-            img.alt && (img.alt.toLowerCase().includes('qris') || 
-                       img.src && img.src.includes('qris'))
-        );
-        
-        if (qrisImages.length > 0) {
-            const container = qrisImages[0].closest('div[class*="hvpgtl"]') ||
-                            qrisImages[0].closest('div[class*="root"]') ||
-                            qrisImages[0].closest('li');
-            
-            if (container) {
-                console.log('✅ [UG-QRIS] QRIS element found (image)');
-                return container;
             }
         }
         
@@ -97,9 +105,16 @@
         }
         
         console.log('🔄 [UG-QRIS] Deleting original QRIS and injecting Poppay...');
+        console.log('[UG-QRIS] Original element:', qrisElement);
         
         // Get parent container
         const parentContainer = qrisElement.parentElement;
+        console.log('[UG-QRIS] Parent container:', parentContainer);
+        
+        if (!parentContainer) {
+            console.error('❌ [UG-QRIS] Parent container not found!');
+            return false;
+        }
         
         // Create new Poppay element
         const newElement = document.createElement('div');
@@ -314,12 +329,37 @@
         `;
         
         // Insert Poppay BEFORE original
-        parentContainer.insertBefore(newElement, qrisElement);
+        try {
+            parentContainer.insertBefore(newElement, qrisElement);
+            console.log('[UG-QRIS] Poppay element inserted');
+        } catch (error) {
+            console.error('❌ [UG-QRIS] Failed to insert:', error);
+            // Fallback: try appendChild
+            try {
+                parentContainer.appendChild(newElement);
+                console.log('[UG-QRIS] Poppay element appended (fallback)');
+            } catch (e2) {
+                console.error('❌ [UG-QRIS] Failed to append:', e2);
+                return false;
+            }
+        }
         
         // DELETE original QRIS completely
-        qrisElement.remove();
+        try {
+            qrisElement.remove();
+            console.log('[UG-QRIS] Original QRIS deleted');
+        } catch (error) {
+            console.error('❌ [UG-QRIS] Failed to delete original:', error);
+        }
         
-        console.log('✅ [UG-QRIS] Original deleted, Poppay injected successfully');
+        // Verify insertion
+        const inserted = document.getElementById('ug-poppay-qris-full');
+        if (inserted) {
+            console.log('✅ [UG-QRIS] Injection verified successfully!');
+        } else {
+            console.error('❌ [UG-QRIS] Injection verification failed!');
+            return false;
+        }
         
         // Initialize form
         setTimeout(() => {
@@ -394,6 +434,16 @@
                 // Hide form, show result
                 formContainer.style.display = 'none';
                 resultContainer.classList.add('active');
+                
+                // WAIT for container to be ready
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Verify container exists
+                const container = document.getElementById('qris-payment-frame');
+                if (!container) {
+                    throw new Error('Container qris-payment-frame not found in DOM');
+                }
+                console.log('[UG-QRIS] Container verified:', container);
                 
                 // Create payment
                 const invoice = 'UG-' + Date.now();
