@@ -81,7 +81,7 @@
     }
     
     // ========================================================================
-    // Replace QRIS with Full Poppay Form
+    // Delete Original QRIS & Insert Poppay Form
     // ========================================================================
     function replaceQRIS() {
         const qrisElement = findQRISElement();
@@ -90,15 +90,18 @@
             return false;
         }
         
-        // Check if already replaced
+        // Check if already injected
         if (document.getElementById('ug-poppay-qris-full')) {
-            console.log('ℹ️ [UG-QRIS] Already replaced');
+            console.log('ℹ️ [UG-QRIS] Already injected');
             return true;
         }
         
-        console.log('🔄 [UG-QRIS] Replacing with full Poppay form...');
+        console.log('🔄 [UG-QRIS] Deleting original QRIS and injecting Poppay...');
         
-        // Create replacement (exact replica of injectscript.html)
+        // Get parent container
+        const parentContainer = qrisElement.parentElement;
+        
+        // Create new Poppay element
         const newElement = document.createElement('div');
         newElement.id = 'ug-poppay-qris-full';
         newElement.className = qrisElement.className;
@@ -310,10 +313,13 @@
             </div>
         `;
         
-        // Replace
-        qrisElement.replaceWith(newElement);
+        // Insert Poppay BEFORE original
+        parentContainer.insertBefore(newElement, qrisElement);
         
-        console.log('✅ [UG-QRIS] Replaced successfully');
+        // DELETE original QRIS completely
+        qrisElement.remove();
+        
+        console.log('✅ [UG-QRIS] Original deleted, Poppay injected successfully');
         
         // Initialize form
         setTimeout(() => {
@@ -499,10 +505,19 @@
             // Check if our injected element still exists
             const ourElement = document.getElementById('ug-poppay-qris-full');
             
+            // Check if original QRIS reappeared
+            const originalQRIS = findQRISElement();
+            
+            // If original QRIS exists and we're injected, delete it again
+            if (originalQRIS && ourElement) {
+                console.log('⚠️ [UG-QRIS] Original QRIS reappeared, deleting again...');
+                originalQRIS.remove();
+            }
+            
+            // If our element was removed, re-inject
             if (!ourElement && isInjected) {
-                console.log('⚠️ [UG-QRIS] Detected removal, re-injecting...');
+                console.log('⚠️ [UG-QRIS] Our element removed, re-injecting...');
                 
-                // Wait a bit for Qwik to finish rendering
                 setTimeout(() => {
                     const reinjected = replaceQRIS();
                     if (reinjected) {
