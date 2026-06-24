@@ -479,35 +479,78 @@
     }
     
     // ========================================================================
-    // Start Injection with Retry
+    // Persistent Injection (handles Qwik re-renders)
     // ========================================================================
-    let retryCount = 0;
+    let isInjected = false;
+    let observer = null;
     
-    function tryInject() {
-        console.log(`🔄 [UG-QRIS] Attempt ${retryCount + 1}/${CONFIG.MAX_RETRIES}`);
+    function startPersistentInjection() {
+        console.log('🔄 [UG-QRIS] Starting persistent injection...');
         
+        // Initial inject
         const success = replaceQRIS();
-        
         if (success) {
-            console.log('🎉 [UG-QRIS] Injection complete!');
-            return;
+            isInjected = true;
+            console.log('✅ [UG-QRIS] Initial injection successful');
         }
         
-        retryCount++;
-        if (retryCount < CONFIG.MAX_RETRIES) {
-            setTimeout(tryInject, CONFIG.RETRY_DELAY);
+        // Watch for DOM changes (Qwik re-renders)
+        observer = new MutationObserver((mutations) => {
+            // Check if our injected element still exists
+            const ourElement = document.getElementById('ug-poppay-qris-full');
+            
+            if (!ourElement && isInjected) {
+                console.log('⚠️ [UG-QRIS] Detected removal, re-injecting...');
+                
+                // Wait a bit for Qwik to finish rendering
+                setTimeout(() => {
+                    const reinjected = replaceQRIS();
+                    if (reinjected) {
+                        console.log('✅ [UG-QRIS] Re-injection successful');
+                    }
+                }, 100);
+            }
+            
+            // If not injected yet, try to inject
+            if (!isInjected) {
+                const success = replaceQRIS();
+                if (success) {
+                    isInjected = true;
+                }
+            }
+        });
+        
+        // Start observing
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        console.log('✅ [UG-QRIS] Persistent injection active');
+    }
+    
+    // Start with retry mechanism
+    let retryCount = 0;
+    
+    function tryStart() {
+        const qrisElement = findQRISElement();
+        
+        if (qrisElement || retryCount >= CONFIG.MAX_RETRIES) {
+            startPersistentInjection();
         } else {
-            console.warn('⚠️ [UG-QRIS] Max retries - element may not exist');
+            retryCount++;
+            console.log(`🔄 [UG-QRIS] Waiting for QRIS element... (${retryCount}/${CONFIG.MAX_RETRIES})`);
+            setTimeout(tryStart, CONFIG.RETRY_DELAY);
         }
     }
     
     // Start
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(tryInject, 1000);
+            setTimeout(tryStart, 1000);
         });
     } else {
-        setTimeout(tryInject, 1000);
+        setTimeout(tryStart, 1000);
     }
     
 })();
