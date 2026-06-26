@@ -333,7 +333,7 @@
                 
                 /* Debug indicator - shows injection is active */
                 #ug-poppay-qris-full::before {
-                    content: '🔒 QRIS Injection Active';
+                    content: '🔒 QRIS Automation Poppay Active';
                     position: absolute;
                     top: -5px;
                     right: 0;
