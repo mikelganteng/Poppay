@@ -96,23 +96,52 @@
     }
     
     // ========================================================================
-    // Find QRIS Element (EXCLUDE our Poppay form!)
+    // Find Stable Injection Container (NEW APPROACH - Don't rely on QRIS element!)
+    // ========================================================================
+    function findStableContainer() {
+        console.log('[UG-QRIS] 🔍 Finding stable container...');
+        
+        // Strategy 1: Find by ID "pay-methods"
+        const payMethods = document.getElementById('pay-methods');
+        if (payMethods) {
+            console.log('✅ [UG-QRIS] Found stable container: #pay-methods');
+            return payMethods;
+        }
+        
+        // Strategy 2: Find by heading "Metode Deposit"
+        const headings = document.querySelectorAll('h3, h2, h4');
+        for (const heading of headings) {
+            if (heading.textContent.trim().toLowerCase().includes('metode deposit')) {
+                const container = heading.parentElement;
+                if (container) {
+                    console.log('✅ [UG-QRIS] Found stable container: via "Metode Deposit" heading');
+                    return container;
+                }
+            }
+        }
+        
+        // Strategy 3: Find section with "Proses Otomatis" text
+        const sections = document.querySelectorAll('section, div');
+        for (const section of sections) {
+            const text = section.textContent;
+            if (text.includes('Proses Otomatis') && text.includes('Proses Manual')) {
+                console.log('✅ [UG-QRIS] Found stable container: section with "Proses Otomatis"');
+                return section;
+            }
+        }
+        
+        console.warn('⚠️ [UG-QRIS] Stable container not found!');
+        return null;
+    }
+    
+    // ========================================================================
+    // Find QRIS Element (for hiding original)
     // ========================================================================
     function findQRISElement() {
         // SKIP if element is inside our Poppay container
         function isInsidePoppay(element) {
             return element.closest('#ug-poppay-qris-full') !== null ||
                    element.closest('[data-ug-persistent="true"]') !== null;
-        }
-        
-        // SKIP if element is already hidden by us
-        function isHiddenByUs(element) {
-            return element.getAttribute('data-poppay-hidden') === 'true';
-        }
-        
-        // SKIP if it's our persistent container
-        function isOurContainer(element) {
-            return element.getAttribute('data-ug-persistent') === 'true';
         }
         
         // Find by image (MOST SPECIFIC - qrisoke logo)
@@ -126,16 +155,15 @@
                             qrisImages[0].closest('div[class*="root"]') ||
                             qrisImages[0].closest('li');
             
-            if (container && !isInsidePoppay(container) && !isHiddenByUs(container) && !isOurContainer(container)) {
-                console.log('✅ [UG-QRIS] Original QRIS found (qrisoke image)');
+            if (container && !isInsidePoppay(container)) {
+                console.log('✅ [UG-QRIS] Original QRIS found (will hide)');
                 return container;
             }
         }
         
-        // Find by text "Qris" (but NOT our Poppay text!)
+        // Find by text "Qris"
         const allDivs = document.querySelectorAll('div');
         for (const div of allDivs) {
-            // Skip if inside our Poppay container
             if (isInsidePoppay(div)) continue;
             
             const text = div.textContent.trim().toLowerCase();
@@ -144,26 +172,21 @@
                                 div.closest('div[class*="root"]') ||
                                 div.closest('li');
                 
-                if (container && !isInsidePoppay(container) && !isHiddenByUs(container) && !isOurContainer(container)) {
-                    console.log('✅ [UG-QRIS] Original QRIS found (text)');
+                if (container && !isInsidePoppay(container)) {
+                    console.log('✅ [UG-QRIS] Original QRIS found (will hide)');
                     return container;
                 }
             }
         }
         
+        console.log('ℹ️ [UG-QRIS] Original QRIS not found (maybe already hidden)');
         return null;
     }
     
     // ========================================================================
-    // Delete Original QRIS & Insert Poppay Form
+    // Inject Poppay Form (NEW APPROACH - Use stable container!)
     // ========================================================================
     async function replaceQRIS() {
-        const qrisElement = findQRISElement();
-        
-        if (!qrisElement) {
-            return false;
-        }
-        
         // Check if already injected
         if (document.getElementById('ug-poppay-qris-full')) {
             console.log('ℹ️ [UG-QRIS] Already injected');
@@ -177,11 +200,28 @@
             return false;
         }
         
-        console.log('🔄 [UG-QRIS] Deleting original QRIS and injecting Poppay...');
-        console.log('[UG-QRIS] Original element:', qrisElement);
+        // Find stable container (NEW!)
+        const stableContainer = findStableContainer();
         
-        // Get parent container
-        const parentContainer = qrisElement.parentElement;
+        if (!stableContainer) {
+            console.error('❌ [UG-QRIS] Stable container not found!');
+            return false;
+        }
+        
+        console.log('🔄 [UG-QRIS] Injecting Poppay to stable container...');
+        console.log('[UG-QRIS] Stable container:', stableContainer);
+        
+        // Try to find and hide original QRIS (optional now!)
+        const originalQRIS = findQRISElement();
+        if (originalQRIS) {
+            console.log('[UG-QRIS] Hiding original QRIS...');
+            originalQRIS.style.display = 'none';
+            originalQRIS.style.visibility = 'hidden';
+            originalQRIS.setAttribute('data-poppay-hidden', 'true');
+        }
+        
+        // Use stable container as parent
+        const parentContainer = stableContainer;
         console.log('[UG-QRIS] Parent container:', parentContainer);
         
         if (!parentContainer) {
@@ -189,10 +229,61 @@
             return false;
         }
         
+        // MARK parent container to track it
+        parentContainer.setAttribute('data-ug-parent', 'true');
+        console.log('[UG-QRIS] Parent container marked');
+        
+        // Prevent parent container from being removed
+        const preventParentRemoval = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.removedNodes.forEach(async (node) => {
+                    // If parent container was removed
+                    if (node === parentContainer || 
+                        (node.nodeType === 1 && node.querySelector && node.querySelector('[data-ug-parent="true"]'))) {
+                        console.warn('[UG-QRIS] ⚠️ Parent container removed! Re-injecting ASAP...');
+                        
+                        setTimeout(async () => {
+                            if (!reinjectionInProgress) {
+                                reinjectionInProgress = true;
+                                const isValid = await validateUsernameExists();
+                                if (isValid) {
+                                    const reinjected = await replaceQRIS();
+                                    if (reinjected) {
+                                        console.log('✅ [UG-QRIS] Re-injection successful after parent removal');
+                                    }
+                                }
+                                reinjectionInProgress = false;
+                            }
+                        }, 100);
+                    }
+                });
+            });
+        });
+        
+        // Watch for parent removal
+        preventParentRemoval.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        console.log('[UG-QRIS] Parent container protection active');
+        
+        // Create SUPER-PERSISTENT wrapper
+        const wrapper = document.createElement('div');
+        wrapper.id = 'ug-poppay-wrapper';
+        wrapper.setAttribute('data-ug-persistent', 'true');
+        wrapper.style.cssText = `
+            position: relative !important;
+            z-index: 9999 !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            margin-bottom: 20px !important;
+        `;
+        
         // Create new Poppay element (isolated container)
         const newElement = document.createElement('div');
         newElement.id = 'ug-poppay-qris-full';
-        newElement.className = qrisElement.className;
         
         // MARK as persistent (don't let site remove this!)
         newElement.setAttribute('data-ug-persistent', 'true');
@@ -204,16 +295,24 @@
             e.stopImmediatePropagation();
         }, true);
         
-        // Prevent container from being removed
+        // Prevent wrapper from being removed (HARDCORE!)
         const preventRemoval = new MutationObserver((mutations) => {
-            const element = document.getElementById('ug-poppay-qris-full');
-            if (!element && isInjected) {
-                console.warn('[UG-QRIS] ⚠️ Container removed! Re-injecting...');
-                setTimeout(() => replaceQRIS(), 100);
+            const wrapperElement = document.getElementById('ug-poppay-wrapper');
+            const innerElement = document.getElementById('ug-poppay-qris-full');
+            
+            if ((!wrapperElement || !innerElement) && isInjected) {
+                console.warn('[UG-QRIS] ⚠️ Injection removed! Re-injecting NOW...');
+                setTimeout(async () => {
+                    if (!reinjectionInProgress) {
+                        reinjectionInProgress = true;
+                        await replaceQRIS();
+                        reinjectionInProgress = false;
+                    }
+                }, 50);
             }
         });
         
-        // Watch for removal
+        // Watch for removal (capture phase!)
         preventRemoval.observe(document.body, {
             childList: true,
             subtree: true
@@ -230,6 +329,23 @@
                     display: block !important;
                     opacity: 1 !important;
                     visibility: visible !important;
+                }
+                
+                /* Debug indicator - shows injection is active */
+                #ug-poppay-qris-full::before {
+                    content: '🔒 QRIS Injection Active';
+                    position: absolute;
+                    top: -5px;
+                    right: 0;
+                    background: rgba(76, 175, 80, 0.1);
+                    color: #4CAF50;
+                    font-size: 10px;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-weight: 600;
+                    opacity: 0.7;
+                    pointer-events: none;
+                    z-index: 9999;
                 }
                 
                 #ug-poppay-qris-full * {
@@ -522,36 +638,42 @@
             </div>
         `;
         
-        // Insert Poppay BEFORE original
+        // Put newElement inside wrapper
+        wrapper.appendChild(newElement);
+        console.log('[UG-QRIS] Element wrapped in super-persistent wrapper');
+        
+        // Insert wrapper at BEGINNING of stable container (or after heading)
         try {
-            parentContainer.insertBefore(newElement, qrisElement);
-            console.log('[UG-QRIS] Poppay element inserted');
+            // Find "Metode Deposit" or "Proses Otomatis" heading
+            const headings = parentContainer.querySelectorAll('h3, h2, h4');
+            let insertAfter = null;
+            
+            for (const heading of headings) {
+                const text = heading.textContent.trim().toLowerCase();
+                if (text.includes('metode deposit') || text.includes('proses otomatis')) {
+                    insertAfter = heading;
+                    break;
+                }
+            }
+            
+            if (insertAfter) {
+                // Insert after heading
+                insertAfter.parentNode.insertBefore(wrapper, insertAfter.nextSibling);
+                console.log('[UG-QRIS] Wrapper inserted after heading');
+            } else {
+                // Insert at beginning
+                parentContainer.insertBefore(wrapper, parentContainer.firstChild);
+                console.log('[UG-QRIS] Wrapper inserted at beginning');
+            }
         } catch (error) {
             console.error('❌ [UG-QRIS] Failed to insert:', error);
             // Fallback: try appendChild
             try {
-                parentContainer.appendChild(newElement);
-                console.log('[UG-QRIS] Poppay element appended (fallback)');
+                parentContainer.appendChild(wrapper);
+                console.log('[UG-QRIS] Wrapper appended (fallback)');
             } catch (e2) {
                 console.error('❌ [UG-QRIS] Failed to append:', e2);
                 return false;
-            }
-        }
-        
-        // HIDE original QRIS instead of delete (safer for mobile)
-        try {
-            qrisElement.style.display = 'none';
-            qrisElement.style.visibility = 'hidden';
-            qrisElement.setAttribute('data-poppay-hidden', 'true');
-            console.log('[UG-QRIS] Original QRIS hidden (not deleted)');
-        } catch (error) {
-            console.error('❌ [UG-QRIS] Failed to hide original:', error);
-            // Fallback: try delete
-            try {
-                qrisElement.remove();
-                console.log('[UG-QRIS] Original QRIS deleted (fallback)');
-            } catch (e2) {
-                console.error('❌ [UG-QRIS] Failed to delete:', e2);
             }
         }
         
@@ -860,10 +982,15 @@
     }
     
     // ========================================================================
-    // Persistent Injection (handles Qwik re-renders)
+    // Global State
     // ========================================================================
     let isInjected = false;
     let observer = null;
+    let reinjectionInProgress = false;
+    
+    // ========================================================================
+    // Persistent Injection (handles Qwik re-renders)
+    // ========================================================================
     
     async function startPersistentInjection() {
         console.log('🔄 [UG-QRIS] Starting persistent injection...');
@@ -883,49 +1010,159 @@
             console.log('✅ [UG-QRIS] Initial injection successful');
         }
         
-        // Watch for DOM changes (Qwik re-renders)
+        // ====================================================================
+        // HARDCORE: Monitor Bank/Pulsa clicks (prevent injection loss)
+        // ====================================================================
+        function monitorManualPaymentClicks() {
+            console.log('🔍 [UG-QRIS] Setting up Bank/Pulsa click monitoring...');
+            
+            // Monitor all clicks on the page
+            document.addEventListener('click', function(e) {
+                // Check if click is on Bank or Pulsa section
+                const target = e.target;
+                const text = target.textContent?.trim().toLowerCase() || '';
+                
+                // Detect Bank/Pulsa section clicks
+                if (text.includes('bank') || text.includes('pulsa') || 
+                    target.closest('[class*="hvpgtl"]') || 
+                    target.id?.includes('bank') || target.id?.includes('pulsa')) {
+                    
+                    console.log('⚠️ [UG-QRIS] Manual payment section clicked, protecting injection...');
+                    
+                    // Function to check and re-inject
+                    const checkAndReinject = async (checkName, delay) => {
+                        setTimeout(async () => {
+                            const wrapper = document.getElementById('ug-poppay-wrapper');
+                            const inner = document.getElementById('ug-poppay-qris-full');
+                            
+                            if ((!wrapper || !inner) && !reinjectionInProgress) {
+                                console.log(`🔄 [UG-QRIS] ${checkName}: Injection lost, re-injecting NOW...`);
+                                reinjectionInProgress = true;
+                                
+                                const isValid = await validateUsernameExists();
+                                if (isValid) {
+                                    const reinjected = await replaceQRIS();
+                                    if (reinjected) {
+                                        console.log(`✅ [UG-QRIS] ${checkName}: Re-injection successful`);
+                                    }
+                                }
+                                
+                                reinjectionInProgress = false;
+                            }
+                        }, delay);
+                    };
+                    
+                    // Multiple checks with increasing delays
+                    checkAndReinject('Immediate', 30);
+                    checkAndReinject('Quick', 100);
+                    checkAndReinject('Double', 250);
+                    checkAndReinject('Triple', 500);
+                    checkAndReinject('Final', 1000);
+                }
+            }, true); // Use capture phase
+            
+            console.log('✅ [UG-QRIS] Click monitoring active');
+        }
+        
+        // Start click monitoring
+        monitorManualPaymentClicks();
+        
+        // ====================================================================
+        // HARDCORE: Interval-based monitoring (every 1.5 seconds - more aggressive!)
+        // ====================================================================
+        function startIntervalMonitoring() {
+            setInterval(async () => {
+                const wrapper = document.getElementById('ug-poppay-wrapper');
+                const inner = document.getElementById('ug-poppay-qris-full');
+                
+                // If injection lost and username still valid, re-inject
+                if ((!wrapper || !inner) && isInjected && !reinjectionInProgress) {
+                    console.log('⚠️ [UG-QRIS] Interval check: Injection lost, re-injecting...');
+                    reinjectionInProgress = true;
+                    
+                    const isValid = await validateUsernameExists();
+                    if (isValid) {
+                        const reinjected = await replaceQRIS();
+                        if (reinjected) {
+                            console.log('✅ [UG-QRIS] Interval re-injection successful');
+                        }
+                    }
+                    
+                    reinjectionInProgress = false;
+                }
+                
+                // Also check if original QRIS reappeared and hide it
+                if (wrapper && inner) {
+                    const originalQRIS = findQRISElement();
+                    if (originalQRIS) {
+                        originalQRIS.style.display = 'none';
+                        originalQRIS.style.visibility = 'hidden';
+                        originalQRIS.setAttribute('data-poppay-hidden', 'true');
+                    }
+                }
+            }, 1500); // Check every 1.5 seconds (more aggressive!)
+            
+            console.log('✅ [UG-QRIS] Interval monitoring active (1.5s)');
+        }
+        
+        // Start interval monitoring
+        startIntervalMonitoring();
+        
+        // ====================================================================
+        // Watch for DOM changes (Qwik re-renders) - AGGRESSIVE MODE
+        // ====================================================================
         observer = new MutationObserver((mutations) => {
-            // Check if our injected element still exists
-            const ourElement = document.getElementById('ug-poppay-qris-full');
+            // Check if our injected elements still exist
+            const wrapper = document.getElementById('ug-poppay-wrapper');
+            const inner = document.getElementById('ug-poppay-qris-full');
             
             // Check if original QRIS reappeared
             const originalQRIS = findQRISElement();
             
             // If original QRIS exists and we're injected, hide it again
-            if (originalQRIS && ourElement) {
-                console.log('⚠️ [UG-QRIS] Original QRIS reappeared, hiding again...');
+            if (originalQRIS && wrapper && inner) {
                 originalQRIS.style.display = 'none';
                 originalQRIS.style.visibility = 'hidden';
                 originalQRIS.setAttribute('data-poppay-hidden', 'true');
             }
             
-            // If our element was removed, re-inject (with username check)
-            if (!ourElement && isInjected) {
-                console.log('⚠️ [UG-QRIS] Our element removed, re-injecting...');
+            // If our elements were removed, re-inject IMMEDIATELY (with username check)
+            if ((!wrapper || !inner) && isInjected && !reinjectionInProgress) {
+                console.log('⚠️ [UG-QRIS] Injection removed by DOM change, re-injecting IMMEDIATELY...');
                 
-                setTimeout(async () => {
+                reinjectionInProgress = true;
+                
+                // Immediate re-inject (no timeout!)
+                (async () => {
                     const isValid = await validateUsernameExists();
                     if (isValid) {
                         const reinjected = await replaceQRIS();
                         if (reinjected) {
-                            console.log('✅ [UG-QRIS] Re-injection successful');
+                            console.log('✅ [UG-QRIS] MutationObserver: Re-injection successful');
                         }
                     } else {
                         console.warn('⚠️ [UG-QRIS] Re-injection skipped - no username');
                     }
-                }, 100);
+                    
+                    reinjectionInProgress = false;
+                })();
             }
             
             // If not injected yet, try to inject (with username check)
-            if (!isInjected) {
+            if (!isInjected && !reinjectionInProgress) {
+                reinjectionInProgress = true;
+                
                 (async () => {
                     const isValid = await validateUsernameExists();
                     if (isValid) {
                         const success = await replaceQRIS();
                         if (success) {
                             isInjected = true;
+                            console.log('✅ [UG-QRIS] Initial injection via MutationObserver');
                         }
                     }
+                    
+                    reinjectionInProgress = false;
                 })();
             }
         });
@@ -952,13 +1189,15 @@
             return; // STOP completely
         }
         
-        const qrisElement = findQRISElement();
+        // NEW: Check for stable container instead of QRIS element
+        const stableContainer = findStableContainer();
         
-        if (qrisElement || retryCount >= CONFIG.MAX_RETRIES) {
+        if (stableContainer || retryCount >= CONFIG.MAX_RETRIES) {
+            console.log('✅ [UG-QRIS] Ready to start - stable container found or max retries reached');
             await startPersistentInjection();
         } else {
             retryCount++;
-            console.log(`🔄 [UG-QRIS] Waiting for QRIS element... (${retryCount}/${CONFIG.MAX_RETRIES})`);
+            console.log(`🔄 [UG-QRIS] Waiting for stable container... (${retryCount}/${CONFIG.MAX_RETRIES})`);
             setTimeout(tryStart, CONFIG.RETRY_DELAY);
         }
     }
