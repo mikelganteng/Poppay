@@ -6,7 +6,7 @@
 (function() {
     'use strict';
     
-    console.log('🚀 [UG-QRIS-POPPAY] Starting v3.0.0...');
+    console.log('🚀 [UG-QRIS-POPPAY] Starting v3.0.1...');
     
     // ========================================================================
     // Global Amount Setter (Direct onclick - accessible from HTML)
@@ -78,6 +78,101 @@
             console.error('❌ [UG-QRIS] Error getting username:', error);
             return null;
         }
+    }
+    
+    // ========================================================================
+    // Fetch Promotion List
+    // ========================================================================
+    async function fetchPromotionList() {
+        try {
+            console.log('🎁 [UG-QRIS] Fetching promotion list...');
+            
+            const response = await fetch('/getDepositPromotionList', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=UTF-8',
+                },
+                body: JSON.stringify({
+                    bank_id: "",
+                    method: 9
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('✅ [UG-QRIS] Promotions loaded:', data);
+            return data;
+        } catch (error) {
+            console.error('❌ [UG-QRIS] Error fetching promotions:', error);
+            return null;
+        }
+    }
+    
+    // ========================================================================
+    // Populate Promotion Select
+    // ========================================================================
+    async function populatePromotionSelect() {
+        const select = document.getElementById('depositPromotionAutoQris');
+        if (!select) {
+            console.warn('⚠️ [UG-QRIS] Promotion select not found');
+            return;
+        }
+        
+        const response = await fetchPromotionList();
+        
+        // Clear loading option
+        select.innerHTML = '<option value="">Pilih Promosi (Opsional)</option>';
+        
+        // Check if promotion is disabled (is_show_promo: false)
+        if (response && response.d && response.d.is_show_promo === false) {
+            console.warn('⚠️ [UG-QRIS] Promotions disabled');
+            const message = response.d.notes || 'Promosi tidak diizinkan';
+            select.innerHTML = `<option value="" disabled>${message}</option>`;
+            select.disabled = true;
+            select.style.opacity = '0.6';
+            select.style.cursor = 'not-allowed';
+            return;
+        }
+        
+        // Check correct response structure: response.d.promotions
+        if (!response || !response.d || !response.d.promotions || !Array.isArray(response.d.promotions)) {
+            console.warn('⚠️ [UG-QRIS] No promotions available');
+            select.innerHTML += '<option value="" disabled>Tidak ada promosi</option>';
+            return;
+        }
+        
+        const promotions = response.d.promotions;
+        
+        // Check if promotions array is empty
+        if (promotions.length === 0) {
+            console.warn('⚠️ [UG-QRIS] No promotions available');
+            select.innerHTML = '<option value="" disabled>Tidak ada promosi tersedia</option>';
+            select.disabled = true;
+            select.style.opacity = '0.6';
+            return;
+        }
+        
+        // Populate with promotions
+        promotions.forEach(promo => {
+            const option = document.createElement('option');
+            // Use promo_code as value
+            option.value = promo.promo_code || promo.code || '';
+            // Use title as display text
+            option.textContent = promo.title || promo.name || promo.promo_code;
+            
+            // Store min amount in data attribute
+            if (promo.min) {
+                option.setAttribute('data-min', promo.min);
+                option.textContent += ` (Min: Rp ${parseInt(promo.min).toLocaleString('id-ID')})`;
+            }
+            
+            select.appendChild(option);
+        });
+        
+        console.log(`✅ [UG-QRIS] ${promotions.length} promotions loaded to select`);
     }
     
     // ========================================================================
@@ -188,10 +283,15 @@
     // ========================================================================
     async function replaceQRIS() {
         // Check if already injected
-        if (document.getElementById('ug-poppay-qris-full')) {
+        const existingElement = document.getElementById('ug-poppay-qris-full');
+        if (existingElement) {
             console.log('ℹ️ [UG-QRIS] Already injected');
             return true;
         }
+        
+        // Reset handler flag for fresh injection
+        handlersAttached = false;
+        console.log('[UG-QRIS] Handler flag reset for fresh injection');
         
         // CRITICAL: Validate username exists BEFORE injection
         const isValid = await validateUsernameExists();
@@ -622,6 +722,15 @@
                             <small class="qris-input-hint">Min: Rp ${CONFIG.MIN_AMOUNT.toLocaleString('id-ID')} | Max: Rp ${CONFIG.MAX_AMOUNT.toLocaleString('id-ID')}</small>
                         </div>
                         
+                        <div class="form-group mb-3">
+                            <label>Promosi (Opsional)</label>
+                            <select class="qris-input" id="depositPromotionAutoQris" style="border-radius: 6px;">
+                                <option value="">Pilih Promosi (Opsional)</option>
+                                <option value="loading" disabled>Loading...</option>
+                            </select>
+                            <small class="qris-input-hint">Pilih promosi yang tersedia atau biarkan kosong</small>
+                        </div>
+                        
                         <button type="submit" class="qris-submit-btn">
                             <span>💳</span>
                             <span id="qris-btn-text">Generate QR Code</span>
@@ -705,6 +814,13 @@
                 amountHidden.value = amount;
                 
                 console.log('[UG-QRIS] ✅ SUCCESS! Set to:', formatted);
+                
+                // Trigger promotion validation check
+                setTimeout(() => {
+                    const evt = new Event('input', { bubbles: true });
+                    amountHidden.dispatchEvent(evt);
+                }, 50);
+                
                 return true;
             } else {
                 console.error('[UG-QRIS] ❌ Input elements not found!');
@@ -792,8 +908,16 @@
     // ========================================================================
     // Initialize Form
     // ========================================================================
+    let handlersAttached = false;  // Prevent duplicate attachments
+    
     function initializeForm() {
         console.log('[UG-QRIS] Initializing form...');
+        
+        // Skip if handlers already attached
+        if (handlersAttached) {
+            console.log('[UG-QRIS] ℹ️ Handlers already attached, skipping...');
+            return;
+        }
         
         // Wait for elements to be ready
         const checkElements = setInterval(() => {
@@ -804,15 +928,25 @@
             
             if (form && amountShow && amountHidden && amountBtns.length > 0) {
                 clearInterval(checkElements);
-                console.log('[UG-QRIS] ✓ All elements found, attaching handlers...');
-                attachHandlers();
+                
+                // Double-check flag before attaching
+                if (!handlersAttached) {
+                    console.log('[UG-QRIS] ✓ All elements found, attaching handlers...');
+                    attachHandlers();
+                    handlersAttached = true;
+                    console.log('[UG-QRIS] ✅ Handlers attached, flag set to prevent duplicates');
+                } else {
+                    console.log('[UG-QRIS] ℹ️ Race condition avoided - handlers already attached');
+                }
             }
         }, 50);
         
         // Timeout after 5 seconds
         setTimeout(() => {
             clearInterval(checkElements);
-            console.warn('[UG-QRIS] ⚠️ Timeout waiting for elements');
+            if (!handlersAttached) {
+                console.warn('[UG-QRIS] ⚠️ Timeout waiting for elements');
+            }
         }, 5000);
     }
     
@@ -826,6 +960,11 @@
         
         console.log('[UG-QRIS] ✓ Form elements found, attaching handlers...');
         
+        // Load promotions
+        populatePromotionSelect().catch(err => {
+            console.error('❌ [UG-QRIS] Failed to load promotions:', err);
+        });
+        
         // Amount input handler - untuk manual typing
         if (amountShow) {
             amountShow.addEventListener('input', function(e) {
@@ -837,8 +976,82 @@
                 
                 // Remove active class from buttons when typing
                 document.querySelectorAll('.qris-amount-btn').forEach(b => b.classList.remove('active'));
+                
+                // Check promotion min validation
+                checkPromotionMinAmount();
             });
             console.log('[UG-QRIS] ✓ Input handler attached');
+        }
+        
+        // Hidden amount field handler - untuk button clicks
+        if (amountHidden) {
+            amountHidden.addEventListener('input', function(e) {
+                // Check promotion min validation when amount changes
+                checkPromotionMinAmount();
+            });
+        }
+        
+        // Promotion change handler - check min amount
+        const promotionSelect = document.getElementById('depositPromotionAutoQris');
+        if (promotionSelect) {
+            promotionSelect.addEventListener('change', function(e) {
+                checkPromotionMinAmount();
+            });
+            console.log('[UG-QRIS] ✓ Promotion handler attached');
+        }
+        
+        // Function to check promotion min amount and show warning
+        function checkPromotionMinAmount() {
+            const promotionSelect = document.getElementById('depositPromotionAutoQris');
+            const amountHidden = document.getElementById('depositAmountAutoQris');
+            const submitBtn = form.querySelector('.qris-submit-btn');
+            
+            if (!promotionSelect || !promotionSelect.value || !amountHidden.value) {
+                // Reset button if no promo selected or no amount
+                if (submitBtn) {
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                }
+                return;
+            }
+            
+            const selectedOption = promotionSelect.options[promotionSelect.selectedIndex];
+            const promoMin = selectedOption.getAttribute('data-min');
+            const amount = parseInt(amountHidden.value);
+            
+            if (promoMin && amount) {
+                const minAmount = parseInt(promoMin);
+                
+                if (amount < minAmount) {
+                    // Show visual warning
+                    if (submitBtn) {
+                        submitBtn.style.opacity = '0.6';
+                        submitBtn.style.cursor = 'not-allowed';
+                    }
+                    
+                    // Show warning text
+                    let warningDiv = document.getElementById('ug-promo-warning');
+                    if (!warningDiv) {
+                        warningDiv = document.createElement('div');
+                        warningDiv.id = 'ug-promo-warning';
+                        warningDiv.style.cssText = 'background: #fff3cd; border: 1px solid #ffc107; color: #856404; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 13px;';
+                        promotionSelect.parentNode.appendChild(warningDiv);
+                    }
+                    warningDiv.innerHTML = `⚠️ Promosi ini membutuhkan minimal deposit <strong>Rp ${minAmount.toLocaleString('id-ID')}</strong>`;
+                    warningDiv.style.display = 'block';
+                } else {
+                    // Remove warning
+                    if (submitBtn) {
+                        submitBtn.style.opacity = '1';
+                        submitBtn.style.cursor = 'pointer';
+                    }
+                    
+                    const warningDiv = document.getElementById('ug-promo-warning');
+                    if (warningDiv) {
+                        warningDiv.style.display = 'none';
+                    }
+                }
+            }
         }
         
         // Button onclick sudah di-handle langsung di HTML, ga perlu addEventListener lagi!
@@ -859,6 +1072,21 @@
             if (amount > CONFIG.MAX_AMOUNT) {
                 alert(`❌ Maksimal deposit Rp ${CONFIG.MAX_AMOUNT.toLocaleString('id-ID')}`);
                 return;
+            }
+            
+            // Promotion validation - check min amount
+            const promotionSelect = document.getElementById('depositPromotionAutoQris');
+            if (promotionSelect && promotionSelect.value) {
+                const selectedOption = promotionSelect.options[promotionSelect.selectedIndex];
+                const promoMin = selectedOption.getAttribute('data-min');
+                
+                if (promoMin) {
+                    const minAmount = parseInt(promoMin);
+                    if (amount < minAmount) {
+                        alert(`❌ Promosi "${selectedOption.textContent}" membutuhkan minimal deposit Rp ${minAmount.toLocaleString('id-ID')}\n\nSilakan tingkatkan jumlah deposit atau pilih promosi lain.`);
+                        return;
+                    }
+                }
             }
             
             // Disable button
@@ -894,11 +1122,15 @@
                 }
                 console.log('[UG-QRIS] Container verified:', container);
                 
+                // Get promotion value
+                const promotionSelect = document.getElementById('depositPromotionAutoQris');
+                const promotion = promotionSelect && promotionSelect.value ? promotionSelect.value : null;
+                
                 // Create payment
                 const invoice = 'UG-' + Date.now();
-                console.log('💳 [UG-QRIS] Creating payment:', { amount, username, invoice });
+                console.log('💳 [UG-QRIS] Creating payment:', { amount, username, invoice, promotion });
                 
-                const payment = new window.QrisSDK({
+                const sdkConfig = {
                     amount: amount,
                     invoice: invoice,
                     notes: `UG Auto Deposit - ${invoice}`,
@@ -907,32 +1139,42 @@
                     payor_email: '',
                     displayMode: 'inline',
                     containerId: 'qris-payment-frame',
-                    resultContainerId: 'payment-result',
-                    onSuccess: (data) => {
-                        console.log('✅ [UG-QRIS] Payment success:', data);
-                        
-                        document.getElementById('payment-result').innerHTML = `
-                            <div style="padding: 20px; background: #d4edda; border: 2px solid #c3e6cb; border-radius: 8px; margin-top: 15px;">
-                                <h4 style="color: #155724; margin: 0 0 10px 0;">✅ Pembayaran Berhasil!</h4>
-                                <p style="color: #155724; margin: 0;">Deposit Rp ${amount.toLocaleString('id-ID')} sedang diproses</p>
-                            </div>
-                        `;
-                        
-                        setTimeout(() => {
-                            resetForm();
-                        }, 5000);
-                    },
-                    onFailed: (error) => {
-                        console.error('❌ [UG-QRIS] Payment failed:', error);
-                        alert('Gagal membuat QR Code. Silakan coba lagi.');
-                        resetForm();
-                    },
-                    onCancel: () => {
-                        console.log('ℹ️ [UG-QRIS] Payment cancelled');
-                        resetForm();
-                    }
-                });
+                    resultContainerId: 'payment-result'
+                };
                 
+                // Add promotion if selected (only if not empty)
+                if (promotion) {
+                    sdkConfig.promotion = promotion;
+                    console.log('🎁 [UG-QRIS] Promotion added:', promotion);
+                }
+                
+                sdkConfig.onSuccess = (data) => {
+                    console.log('✅ [UG-QRIS] Payment success:', data);
+                    
+                    document.getElementById('payment-result').innerHTML = `
+                        <div style="padding: 20px; background: #d4edda; border: 2px solid #c3e6cb; border-radius: 8px; margin-top: 15px;">
+                            <h4 style="color: #155724; margin: 0 0 10px 0;">✅ Pembayaran Berhasil!</h4>
+                            <p style="color: #155724; margin: 0;">Deposit Rp ${amount.toLocaleString('id-ID')} sedang diproses</p>
+                        </div>
+                    `;
+                    
+                    setTimeout(() => {
+                        resetForm();
+                    }, 5000);
+                };
+                
+                sdkConfig.onFailed = (error) => {
+                    console.error('❌ [UG-QRIS] Payment failed:', error);
+                    alert('Gagal membuat QR Code. Silakan coba lagi.');
+                    resetForm();
+                };
+                
+                sdkConfig.onCancel = () => {
+                    console.log('ℹ️ [UG-QRIS] Payment cancelled');
+                    resetForm();
+                };
+                
+                const payment = new window.QrisSDK(sdkConfig);
                 payment.openPayment();
                 
             } catch (error) {
@@ -949,6 +1191,13 @@
             document.getElementById('payment-result').innerHTML = '';
             amountShow.value = '';
             amountHidden.value = '';
+            
+            // Reset promotion select
+            const promotionSelect = document.getElementById('depositPromotionAutoQris');
+            if (promotionSelect) {
+                promotionSelect.value = '';
+            }
+            
             document.querySelectorAll('.qris-amount-btn').forEach(b => b.classList.remove('active'));
             const submitBtn = form.querySelector('.qris-submit-btn');
             submitBtn.disabled = false;
