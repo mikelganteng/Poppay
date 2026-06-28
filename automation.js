@@ -6,7 +6,7 @@
 (function() {
     'use strict';
     
-    console.log('🚀 [UG-QRIS-POPPAY] Starting v3.0.0...');
+    console.log('🚀 [UG-QRIS-POPPAY] Starting v3.0.1...');
     
     // ========================================================================
     // Global Amount Setter (Direct onclick - accessible from HTML)
