@@ -126,6 +126,17 @@
         // Clear loading option
         select.innerHTML = '<option value="">Pilih Promosi (Opsional)</option>';
         
+        // Check if promotion is disabled (is_show_promo: false)
+        if (response && response.d && response.d.is_show_promo === false) {
+            console.warn('⚠️ [UG-QRIS] Promotions disabled');
+            const message = response.d.notes || 'Promosi tidak diizinkan';
+            select.innerHTML = `<option value="" disabled>${message}</option>`;
+            select.disabled = true;
+            select.style.opacity = '0.6';
+            select.style.cursor = 'not-allowed';
+            return;
+        }
+        
         // Check correct response structure: response.d.promotions
         if (!response || !response.d || !response.d.promotions || !Array.isArray(response.d.promotions)) {
             console.warn('⚠️ [UG-QRIS] No promotions available');
@@ -134,6 +145,15 @@
         }
         
         const promotions = response.d.promotions;
+        
+        // Check if promotions array is empty
+        if (promotions.length === 0) {
+            console.warn('⚠️ [UG-QRIS] No promotions available');
+            select.innerHTML = '<option value="" disabled>Tidak ada promosi tersedia</option>';
+            select.disabled = true;
+            select.style.opacity = '0.6';
+            return;
+        }
         
         // Populate with promotions
         promotions.forEach(promo => {
@@ -263,10 +283,15 @@
     // ========================================================================
     async function replaceQRIS() {
         // Check if already injected
-        if (document.getElementById('ug-poppay-qris-full')) {
+        const existingElement = document.getElementById('ug-poppay-qris-full');
+        if (existingElement) {
             console.log('ℹ️ [UG-QRIS] Already injected');
             return true;
         }
+        
+        // Reset handler flag for fresh injection
+        handlersAttached = false;
+        console.log('[UG-QRIS] Handler flag reset for fresh injection');
         
         // CRITICAL: Validate username exists BEFORE injection
         const isValid = await validateUsernameExists();
@@ -883,8 +908,16 @@
     // ========================================================================
     // Initialize Form
     // ========================================================================
+    let handlersAttached = false;  // Prevent duplicate attachments
+    
     function initializeForm() {
         console.log('[UG-QRIS] Initializing form...');
+        
+        // Skip if handlers already attached
+        if (handlersAttached) {
+            console.log('[UG-QRIS] ℹ️ Handlers already attached, skipping...');
+            return;
+        }
         
         // Wait for elements to be ready
         const checkElements = setInterval(() => {
@@ -895,15 +928,25 @@
             
             if (form && amountShow && amountHidden && amountBtns.length > 0) {
                 clearInterval(checkElements);
-                console.log('[UG-QRIS] ✓ All elements found, attaching handlers...');
-                attachHandlers();
+                
+                // Double-check flag before attaching
+                if (!handlersAttached) {
+                    console.log('[UG-QRIS] ✓ All elements found, attaching handlers...');
+                    attachHandlers();
+                    handlersAttached = true;
+                    console.log('[UG-QRIS] ✅ Handlers attached, flag set to prevent duplicates');
+                } else {
+                    console.log('[UG-QRIS] ℹ️ Race condition avoided - handlers already attached');
+                }
             }
         }, 50);
         
         // Timeout after 5 seconds
         setTimeout(() => {
             clearInterval(checkElements);
-            console.warn('[UG-QRIS] ⚠️ Timeout waiting for elements');
+            if (!handlersAttached) {
+                console.warn('[UG-QRIS] ⚠️ Timeout waiting for elements');
+            }
         }, 5000);
     }
     
