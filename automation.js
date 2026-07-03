@@ -459,7 +459,7 @@
                 }
                 
                 .qris-manual-wrapper {
-                    background: #ffffff;
+                    background: #1a1a1a;
                     padding: ${CONFIG.IS_MOBILE ? '12px' : '25px'};
                     border-radius: ${CONFIG.IS_MOBILE ? '8px' : '12px'};
                     margin-bottom: ${CONFIG.IS_MOBILE ? '10px' : '25px'};
