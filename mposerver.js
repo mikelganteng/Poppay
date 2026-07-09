@@ -563,7 +563,7 @@
       '<' + '/a>' +
       '<' + '/li>';
   
-    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">PopPay Instant<' + '/a>';
+    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">Deposit Instant<' + '/a>';
     const btnManualHTML = '<' + 'a href="javascript:void(0)" id="btnManual" class="button-pills nav-link">Manual deposit<' + '/a>';
   
     const componentTabsHTML = '<' + 'div class="component-tabs" style="margin-bottom:10px;">' +
