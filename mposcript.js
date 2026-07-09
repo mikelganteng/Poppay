@@ -629,7 +629,7 @@
       '<' + '/div>';
 
     // Tab Button HTML Templates with inline styles (Instant active by default)
-    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active" style="background: #0d6efd !important; color: #fff !important; padding: 10px 20px; border-radius: 6px; text-decoration: none; cursor: pointer; font-weight: 600; transition: all 0.3s;">🚀 PopPay Instant<' + '/a>';
+    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active" style="background: #0d6efd !important; color: #fff !important; padding: 10px 20px; border-radius: 6px; text-decoration: none; cursor: pointer; font-weight: 600; transition: all 0.3s;">🚀 Instant Deposit<' + '/a>';
     const btnManualHTML = '<' + 'a href="javascript:void(0)" id="btnManual" class="button-pills nav-link" style="background: #333 !important; color: #fff !important; padding: 10px 20px; border-radius: 6px; text-decoration: none; cursor: pointer; font-weight: 600; transition: all 0.3s;">🏦 Manual deposit<' + '/a>';
 
     const componentTabsHTML = '<' + 'div class="component-tabs" style="margin-bottom:10px; display: flex !important; gap: 10px; padding: 10px; background: #2a2a2a; border-radius: 8px;">' +
