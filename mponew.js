@@ -480,10 +480,10 @@
     }
     console.log(`[INJECT] ✅ Username ${username} inject success`);
   
-    function initQrisSdk() {
-      setTimeout(() => {
+    function initMpopayInstance() {
+      if (typeof QrisSDKCustom !== "undefined") {
         new QrisSDKCustom({
-          formId: 'formDepositAutoQris',
+          formId: 'formDepositAuto',
           onSuccess: (data) => {
             console.log('[QRIS AUTO] Payment Success:', data);
           },
@@ -491,78 +491,11 @@
             console.log('[QRIS AUTO] Payment Failed:', status);
           }
         });
-        console.log('[INJECT] ✅ QRIS SDK initialized for injected form!');
-      }, 500);
+        console.log('[INJECT] ✅ QRIS Auto Tab (Inline Mode) initialized!');
+      }
     }
   
-    function setupQrisFormHandlers() {
-      syncInputs('depositShowAmountAutoQris', 'depositAmountAutoQris');
-  
-      $(document).on('click', '.qris-amount-btn', function () {
-        $('.qris-amount-btn').removeClass('active');
-        $(this).addClass('active');
-        const amount = parseInt($(this).data('amount')) || 0;
-        const validAmount = Math.max(0, amount);
-        $("#depositShowAmountAutoQris").val(validAmount);
-      });
-    }
-  
-    function injectDarkTheme() {
-      const oldStyle = document.getElementById('qris-dark-theme');
-      if (oldStyle) oldStyle.remove();
-  
-      const darkThemeCSS = `
-              html body #v-autobank,
-              html body #v-autobank .qris-manual-wrapper,
-              html body #v-autobank .card,
-              html body #v-autobank .modal-content,
-              html body #qrButton,
-              html body #containerqris {
-                  background: #1a1a1a !important;
-                  background-color: #1a1a1a !important;
-                  color: #ffffff !important;
-              }
-              html body #v-autobank .qris-manual-header h5,
-              html body #v-autobank .qris-manual-header p,
-              html body #v-autobank .qris-form label {
-                  color: #ffffff !important;
-              }
-              html body #v-autobank .text-muted {
-                  color: #aaaaaa !important;
-              }
-              html body #v-autobank .form-control {
-                  background: #2a2a2a !important;
-                  background-color: #2a2a2a !important;
-                  color: #ffffff !important;
-                  border-color: #444444 !important;
-              }
-              html body #v-autobank .input-group-text {
-                  background: #333333 !important;
-                  background-color: #333333 !important;
-                  color: #ffffff !important;
-                  border-color: #444444 !important;
-              }
-              html body #v-autobank .btn-outline-primary {
-                  color: #ffffff !important;
-                  border-color: #444444 !important;
-                  background: #2a2a2a !important;
-                  background-color: #2a2a2a !important;
-              }
-              html body #v-autobank .btn-outline-primary:hover,
-              html body #v-autobank .btn-outline-primary.active {
-                  background: #0d6efd !important;
-                  background-color: #0d6efd !important;
-                  color: #ffffff !important;
-              }
-          `;
-  
-      const styleElement = document.createElement('style');
-      styleElement.id = 'qris-dark-theme';
-      styleElement.textContent = darkThemeCSS;
-      document.head.appendChild(styleElement);
-      console.log('[DARK THEME] ✅ CSS injected');
-    }
-  
+    // Define QRIS HTML Template (used globally)
     const qrisHTML = '<' + 'div class="qris-manual-wrapper" style="background: #1a1a1a; padding: 25px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">' +
       '<' + 'div class="qris-manual-header" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #f0f0f0;">' +
       '<' + 'h5 style="color: #fff; font-weight: 600; margin: 0; display: flex; align-items: center;">' +
@@ -604,35 +537,23 @@
       '<' + '/div>' +
       '<' + '/div>' +
       '<' + '/div>';
-  
-    const instanTabButtonHTML = '<' + 'li class="nav-item">' +
-      '<' + 'a class="button-pills nav-link active" id="nav-autobank-tab" data-toggle="tab" data-type="Auto" href="#v-autobank" role="tab" aria-controls="nav-autobank" aria-expanded="true">' +
-      '<' + 'i class="fas fa-wallet"><' + '/i>' +
-      '<' + 'span>Deposit Instant<' + '/span>' +
-      '<' + '/a>' +
-      '<' + '/li>';
-  
-    const manualTabButtonHTML = '<' + 'li class="nav-item">' +
-      '<' + 'a class="button-pills nav-link" id="nav-manualtrf-tab" data-toggle="tab" data-type="Manual" href="#v-manualtrf" role="tab" aria-controls="nav-manualtrf" aria-expanded="false">' +
-      '<' + 'i class="fas fa-university"><' + '/i>' +
-      '<' + 'span>Transfer Manual<' + '/span>' +
-      '<' + '/a>' +
-      '<' + '/li>';
-  
-    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">PopPay Instant<' + '/a>';
+
+    // Tab Button HTML Templates
+    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">Deposit Instant<' + '/a>';
     const btnManualHTML = '<' + 'a href="javascript:void(0)" id="btnManual" class="button-pills nav-link">Manual deposit<' + '/a>';
-  
+
     const componentTabsHTML = '<' + 'div class="component-tabs" style="margin-bottom:10px;">' +
       btnInstantHTML +
       btnManualHTML +
       '<' + '/div>';
-  
+
     const qrButtonHTML = '<' + 'div class="transaksi-formulir flip-card" id="qrButton">' +
       '<' + 'div id="containerqris" style="width:100%;">' +
       qrisHTML +
       '<' + '/div>' +
       '<' + '/div>';
-  
+
+    // Setup Deposit Tab Switching
     function setupDepositTabSwitching() {
       $(document).off('click.mpoDepositTab', '#btnInstant')
         .on('click.mpoDepositTab', '#btnInstant', function (e) {
@@ -644,7 +565,7 @@
             $('#qrButton, #containerqris').show();
           }
         });
-  
+
       $(document).off('click.mpoDepositTabManual', '#btnManual')
         .on('click.mpoDepositTabManual', '#btnManual', function (e) {
           e.preventDefault();
@@ -656,18 +577,19 @@
           }
         });
     }
-  
+
+    // Ensure Deposit Tab Buttons
     function ensureDepositTabButtons() {
       const $depositSection = $('#nav-deposit, .main-content.transaksi').first();
       const $transaksiForm = $depositSection.length ? 
         $depositSection.find('.transaksi-form').first() : 
         $('.transaksi-form').first();
-  
+
       if (!$transaksiForm.length) {
         console.log('[INJECT] ⚠️ .transaksi-form not found');
         return;
       }
-  
+
       let $componentTabs = $transaksiForm.find('.component-tabs').first();
       
       if (!$componentTabs.length) {
@@ -680,17 +602,17 @@
         }
         $componentTabs = $transaksiForm.find('.component-tabs').first();
       }
-  
+
       if ($('#btnInstant').length === 0) {
         console.log('[INJECT] Adding btnInstant');
         $componentTabs.prepend(btnInstantHTML);
       }
-  
+
       if ($('#btnManual').length === 0 && $('#formDepositManual, #v-manualtrf').length > 0) {
         console.log('[INJECT] Adding btnManual');
         $componentTabs.append(btnManualHTML);
       }
-  
+
       if (!$('#qrButton').length) {
         console.log('[INJECT] Creating #qrButton container');
         $componentTabs.after(qrButtonHTML);
@@ -700,18 +622,122 @@
           $('#containerqris').html(qrisHTML);
         }
       }
-  
+
       $('#btnInstant').addClass('active');
       $('#qrButton, #containerqris').show();
       $('#formDepositManual, .transaksi-formulir:has(#transactionContent)').hide();
     }
+
+    // Check if "Instan Deposit" tab already exists
+    const existingAutoTab = $("#nav-autobank-tab");
+    const existingAutoContent = $("#v-autobank");
+
+    if (existingAutoContent.length > 0) {
+      console.log('[INJECT] Instan Deposit content (#v-autobank) already exists. Checking tab button...');
+
+      // Create tab button if it is missing
+      if (existingAutoTab.length === 0) {
+        console.log('[INJECT] Creating missing tab button...');
+        var instanTabButton = '<' + 'li class="nav-item">' +
+          '<' + 'a class="button-pills nav-link active" id="nav-autobank-tab" data-toggle="tab" data-type="Auto" href="#v-autobank" role="tab" aria-controls="nav-autobank" aria-expanded="true">' +
+          '<' + 'i class="fas fa-wallet"><' + '/i>' +
+          '<' + 'span>Instan Deposit<' + '/span>' +
+          '<' + '/a>' +
+          '<' + '/li>';
+        $(".payment-method").prepend(instanTabButton);
+      }
+
+      // Find the existing form
+      const existingForm = existingAutoContent.find('form#formDepositAuto');
+
+      if (existingForm.length > 0) {
+        console.log('[INJECT] Found existing form, checking if QRIS already injected...');
+
+        // Check if already injected
+        if (existingAutoContent.find('.qris-manual-wrapper').length > 0) {
+          console.log('[INJECT] ⚠️ QRIS already injected, skipping...');
+          return;
+        }
+
+        console.log('[INJECT] Injecting QRIS container above existing form...');
+
+        // Insert BEFORE existing form (inside #v-autobank)
+        existingForm.before(qrisHTML);
   
+        console.log('[INJECT] ✅ QRIS container injected successfully!');
+  
+        // Hide original MPAY form using CSS !important to prevent website scripts from re-showing it
+        $('<' + 'style' + '>')
+          .html("#v-autobank #formDepositAuto, #v-autobank .transaksi-note { display: none !important; }")
+          .appendTo("head");
+        console.log('[INJECT] ✅ Original MPAY form hidden!');
+  
+        // Update form ID for QrisSDKCustom to use new form
+        setTimeout(() => {
+          new QrisSDKCustom({
+            formId: 'formDepositAutoQris',
+            onSuccess: (data) => {
+              console.log('[QRIS AUTO] Payment Success:', data);
+            },
+            onFailed: (status) => {
+              console.log('[QRIS AUTO] Payment Failed:', status);
+            }
+          });
+          console.log('[INJECT] ✅ QRIS SDK initialized for injected form!');
+        }, 500);
+  
+        // Setup amount input handlers for new form
+        syncInputs('depositShowAmountAutoQris', 'depositAmountAutoQris');
+  
+        // Amount button handlers
+        $(document).on('click', '.qris-amount-btn', function () {
+          $('.qris-amount-btn').removeClass('active');
+          $(this).addClass('active');
+          const amount = parseInt($(this).data('amount')) || 0;
+          const validAmount = Math.max(0, amount);
+          $("#depositShowAmountAutoQris").val(validAmount);
+        });
+  
+      } else {
+        console.log('[INJECT] ⚠️ Form not found in existing tab');
+      }
+  
+    } else {
+      // Tab doesn't exist, create new tab (original behavior)
+      console.log('[INJECT] No Instan Deposit tab found, creating new tab...');
+      var instanTabButton = '<' + 'li class="nav-item">' +
+        '<' + 'a class="button-pills nav-link active" id="nav-autobank-tab" data-toggle="tab" data-type="Auto" href="#v-autobank" role="tab" aria-controls="nav-autobank" aria-expanded="true">' +
+        '<' + 'i class="fas fa-wallet"><' + '/i>' +
+        '<' + 'span>Instan Deposit<' + '/span>' +
+        '<' + '/a>' +
+        '<' + '/li>';
+
+      // Use global qrisHTML template wrapped in tab-pane
+      var instanTabContent = '<' + 'div class="tab-pane text-white fade show active" id="v-autobank" role="tabpanel" aria-labelledby="v-autobank-tab">' +
+        qrisHTML +
+        '<' + '/div>';
+
+      $(".payment-method").prepend(instanTabButton);
+      $("#transactionContent").prepend(instanTabContent);
+
+      $("#nav-manualtrf-tab").removeClass("active");
+      $("#v-manualtrf").removeClass("show active");
+
+      if (typeof amountPicker === "function") {
+        amountPicker("Auto");
+      }
+
+      // Setup amount input handlers for new form
+      syncInputs('depositShowAmountAutoQris', 'depositAmountAutoQris');
+    }
+
+    // Initialize all components
     injectDarkTheme();
     ensureDepositTabButtons();
     setupDepositTabSwitching();
     initQrisSdk();
     setupQrisFormHandlers();
-  
+
     console.log('[INJECT SCRIPT] ========== INJECTION PROCESS COMPLETE ==========');
   });
   
