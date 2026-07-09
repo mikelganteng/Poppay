@@ -509,17 +509,17 @@
   
     const qrisHTML = '<' + 'div class="qris-manual-wrapper" style="background: #1a1a1a; padding: 25px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">' +
       '<' + 'div class="qris-manual-header" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #f0f0f0;">' +
-      '<' + 'h5 style="color: #333; font-weight: 600; margin: 0; display: flex; align-items: center;">' +
+      '<' + 'h5 style="color: #fff; font-weight: 600; margin: 0; display: flex; align-items: center;">' +
       '<' + 'i class="fas fa-qrcode" style="margin-right: 10px; color: #4CAF50;"><' + '/i>' +
-      'QRIS Payment - ' +
+      'QRIS Payment - PopPay Instant' +
       '<' + '/h5>' +
-      '<' + 'p style="color: #666; font-size: 13px; margin: 8px 0 0 0;">Scan QR code dengan e-wallet favorit Anda (DANA, OVO, GoPay, ShopeePay, dll)<' + '/p>' +
+      '<' + 'p style="color: #ccc; font-size: 13px; margin: 8px 0 0 0;">Scan QR code dengan e-wallet favorit Anda (DANA, OVO, GoPay, ShopeePay, dll)<' + '/p>' +
       '<' + '/div>' +
       '<' + 'div class="qris-form" id="qrisFormContainer">' +
       '<' + 'form id="formDepositAutoQris" enctype="multipart/form-data" novalidate="novalidate">' +
       '<' + 'input type="hidden" name="bankAuto" id="bankSelectAutoQris" value="QRIS">' +
       '<' + 'div class="form-group mb-3">' +
-      '<' + 'label style="color: #555; font-weight: 500; margin-bottom: 8px; display: block;">Jumlah Deposit</' + 'label>' +
+      '<' + 'label style="color: #fff; font-weight: 500; margin-bottom: 8px; display: block;">Jumlah Deposit</' + 'label>' +
       '<' + 'div class="d-flex flex-wrap gap-2 mb-3" style="gap: 10px;">' +
       '<' + 'button type="button" class="btn btn-outline-primary qris-amount-btn" data-amount="10000">Rp 10.000<' + '/button>' +
       '<' + 'button type="button" class="btn btn-outline-primary qris-amount-btn" data-amount="20000">Rp 20.000<' + '/button>' +
@@ -563,7 +563,7 @@
       '<' + '/a>' +
       '<' + '/li>';
   
-    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">Deposit Instant<' + '/a>';
+    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">PopPay Instant<' + '/a>';
     const btnManualHTML = '<' + 'a href="javascript:void(0)" id="btnManual" class="button-pills nav-link">Manual deposit<' + '/a>';
   
     const componentTabsHTML = '<' + 'div class="component-tabs" style="margin-bottom:10px;">' +
