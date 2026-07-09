@@ -14,39 +14,53 @@
               html body #v-autobank,
               html body #v-autobank .qris-manual-wrapper,
               html body #v-autobank .card,
-              html body #v-autobank .modal-content {
+              html body #v-autobank .modal-content,
+              html body #qrButton,
+              html body #containerqris {
                   background: #1a1a1a !important;
                   background-color: #1a1a1a !important;
                   color: #ffffff !important;
               }
               html body #v-autobank .qris-manual-header h5,
               html body #v-autobank .qris-manual-header p,
-              html body #v-autobank .qris-form label {
+              html body #v-autobank .qris-form label,
+              html body #qrButton .qris-manual-header h5,
+              html body #qrButton .qris-manual-header p,
+              html body #qrButton .qris-form label {
                   color: #ffffff !important;
               }
-              html body #v-autobank .text-muted {
+              html body #v-autobank .text-muted,
+              html body #qrButton .text-muted {
                   color: #aaaaaa !important;
               }
-              html body #v-autobank .form-control {
+              html body #v-autobank .form-control,
+              html body #qrButton .form-control {
                   background: #2a2a2a !important;
                   background-color: #2a2a2a !important;
                   color: #ffffff !important;
                   border-color: #444444 !important;
               }
-              html body #v-autobank .input-group-text {
+              html body #v-autobank .input-group-text,
+              html body #qrButton .input-group-text {
                   background: #333333 !important;
                   background-color: #333333 !important;
                   color: #ffffff !important;
                   border-color: #444444 !important;
               }
-              html body #v-autobank .btn-outline-primary {
+              html body #v-autobank .btn-outline-primary,
+              html body #qrButton .btn-outline-primary,
+              .qris-amount-btn {
                   color: #ffffff !important;
                   border-color: #444444 !important;
                   background: #2a2a2a !important;
                   background-color: #2a2a2a !important;
               }
               html body #v-autobank .btn-outline-primary:hover,
-              html body #v-autobank .btn-outline-primary.active {
+              html body #v-autobank .btn-outline-primary.active,
+              html body #qrButton .btn-outline-primary:hover,
+              html body #qrButton .btn-outline-primary.active,
+              .qris-amount-btn:hover,
+              .qris-amount-btn.active {
                   background: #0d6efd !important;
                   background-color: #0d6efd !important;
                   color: #ffffff !important;
@@ -480,19 +494,47 @@
     }
     console.log(`[INJECT] ✅ Username ${username} inject success`);
   
-    function initMpopayInstance() {
-      if (typeof QrisSDKCustom !== "undefined") {
-        new QrisSDKCustom({
-          formId: 'formDepositAuto',
-          onSuccess: (data) => {
-            console.log('[QRIS AUTO] Payment Success:', data);
-          },
-          onFailed: (status) => {
-            console.log('[QRIS AUTO] Payment Failed:', status);
-          }
-        });
-        console.log('[INJECT] ✅ QRIS Auto Tab (Inline Mode) initialized!');
-      }
+    function initQrisSdk() {
+      setTimeout(() => {
+        if (typeof QrisSDKCustom !== "undefined") {
+          new QrisSDKCustom({
+            formId: 'formDepositAutoQris',
+            onSuccess: (data) => {
+              console.log('[QRIS AUTO] Payment Success:', data);
+            },
+            onFailed: (status) => {
+              console.log('[QRIS AUTO] Payment Failed:', status);
+            }
+          });
+          console.log('[INJECT] ✅ QRIS SDK initialized for formDepositAutoQris!');
+        }
+      }, 1000);
+    }
+
+    function setupQrisFormHandlers() {
+      // Sync inputs
+      syncInputs('depositShowAmountAutoQris', 'depositAmountAutoQris');
+
+      // Amount button click handlers (use delegated events for dynamic content)
+      $(document).off('click.qrisAmountBtn', '.qris-amount-btn');
+      $(document).on('click.qrisAmountBtn', '.qris-amount-btn', function (e) {
+        e.preventDefault();
+        console.log('[QRIS] Amount button clicked:', $(this).data('amount'));
+        
+        $('.qris-amount-btn').removeClass('active');
+        $(this).addClass('active');
+        
+        const amount = parseInt($(this).data('amount')) || 0;
+        const validAmount = Math.max(0, amount);
+        
+        // Format with comma for display
+        const formattedAmount = validAmount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        
+        $("#depositShowAmountAutoQris").val(formattedAmount);
+        $("#depositAmountAutoQris").val(validAmount);
+        
+        console.log('[QRIS] Amount set:', { show: formattedAmount, hidden: validAmount });
+      });
     }
   
     // Define QRIS HTML Template (used globally)
@@ -539,7 +581,7 @@
       '<' + '/div>';
 
     // Tab Button HTML Templates
-    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">Deposit Instant<' + '/a>';
+    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">PopPay Instant<' + '/a>';
     const btnManualHTML = '<' + 'a href="javascript:void(0)" id="btnManual" class="button-pills nav-link">Manual deposit<' + '/a>';
 
     const componentTabsHTML = '<' + 'div class="component-tabs" style="margin-bottom:10px;">' +
@@ -672,31 +714,7 @@
           .appendTo("head");
         console.log('[INJECT] ✅ Original MPAY form hidden!');
   
-        // Update form ID for QrisSDKCustom to use new form
-        setTimeout(() => {
-          new QrisSDKCustom({
-            formId: 'formDepositAutoQris',
-            onSuccess: (data) => {
-              console.log('[QRIS AUTO] Payment Success:', data);
-            },
-            onFailed: (status) => {
-              console.log('[QRIS AUTO] Payment Failed:', status);
-            }
-          });
-          console.log('[INJECT] ✅ QRIS SDK initialized for injected form!');
-        }, 500);
-  
-        // Setup amount input handlers for new form
-        syncInputs('depositShowAmountAutoQris', 'depositAmountAutoQris');
-  
-        // Amount button handlers
-        $(document).on('click', '.qris-amount-btn', function () {
-          $('.qris-amount-btn').removeClass('active');
-          $(this).addClass('active');
-          const amount = parseInt($(this).data('amount')) || 0;
-          const validAmount = Math.max(0, amount);
-          $("#depositShowAmountAutoQris").val(validAmount);
-        });
+        console.log('[INJECT] ✅ QRIS container injected, SDK will be initialized globally');
   
       } else {
         console.log('[INJECT] ⚠️ Form not found in existing tab');
@@ -726,17 +744,13 @@
       if (typeof amountPicker === "function") {
         amountPicker("Auto");
       }
-
-      // Setup amount input handlers for new form
-      syncInputs('depositShowAmountAutoQris', 'depositAmountAutoQris');
     }
 
-    // Initialize all components
-    injectDarkTheme();
+    // Initialize all components (dark theme already running from MASTER FIX SCRIPT)
     ensureDepositTabButtons();
     setupDepositTabSwitching();
-    initQrisSdk();
     setupQrisFormHandlers();
+    initQrisSdk();
 
     console.log('[INJECT SCRIPT] ========== INJECTION PROCESS COMPLETE ==========');
   });
