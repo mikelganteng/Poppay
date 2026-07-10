@@ -11,12 +11,15 @@
       if (oldStyle) oldStyle.remove();
   
       const darkThemeCSS = `
-              html body #v-autobank,
-              html body #v-autobank .qris-manual-wrapper,
-              html body #v-autobank .card,
-              html body #v-autobank .modal-content,
+              /* Only affect deposit section, not withdraw */
+              html body #nav-deposit #v-autobank,
+              html body #nav-deposit .qris-manual-wrapper,
+              html body #nav-deposit .card,
+              html body #nav-deposit .modal-content,
               html body #qrButton,
-              html body #containerqris {
+              html body #containerqris,
+              html body .transaksi-form #v-autobank,
+              html body .transaksi-form .qris-manual-wrapper {
                   background: #1a1a1a !important;
                   background-color: #1a1a1a !important;
                   color: #ffffff !important;
@@ -298,41 +301,76 @@
     }
   
     initFormEvent() {
-      if (!this.form) return;
+      if (!this.form) {
+        console.log('[QRIS SDK] ⚠️ Form not found:', this.formId);
+        return;
+      }
   
-      $(`#${this.formId}`).off('submit').on('submit', async (e) => {
+      console.log('[QRIS SDK] Initializing form event for:', this.formId);
+      
+      // Remove form action to prevent default submission
+      $(`#${this.formId}`).attr('action', 'javascript:void(0);');
+      
+      // Attach submit handler with multiple preventDefault mechanisms
+      $(`#${this.formId}`).off('submit.qrisSDK').on('submit.qrisSDK', async (e) => {
+        // ALWAYS prevent default first
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        console.log('[QRIS SDK] Form submit intercepted');
+        
+        // Check jQuery validation if available
         if (typeof $(this.form).valid === 'function' && !$(this.form).valid()) {
-          return;
+          console.log('[QRIS SDK] ❌ Form validation failed');
+          return false;
         }
   
-        e.preventDefault();
-  
         const $depoForm = $(`#${this.formId}`);
-        if ($depoForm.data("depositSubmitting")) return;
+        
+        // Prevent double submission
+        if ($depoForm.data("depositSubmitting")) {
+          console.log('[QRIS SDK] ⚠️ Already submitting, blocked');
+          return false;
+        }
         $depoForm.data("depositSubmitting", true);
   
         const $depoBtn = $depoForm.find('button[type="submit"], input[type="submit"]');
         $depoBtn.prop("disabled", true);
   
         const amountValue = parseFloat(this.amountInput.value);
+        
+        // Validate amount
+        if (!amountValue || amountValue < 10000) {
+          alert('Jumlah deposit minimal Rp 10.000');
+          console.log('[QRIS SDK] ❌ Amount validation failed:', amountValue);
+          $depoForm.data("depositSubmitting", false);
+          $depoBtn.prop("disabled", false);
+          return false;
+        }
+        
         const randomRefId = 'INV-' + Date.now();
         const bankChannel = this.invoiceInput ? this.invoiceInput.value : 'QRIS';
         const username = await getUsername();
   
         // Safety check: Block transaction if username is GUEST
         if (username.startsWith('GUEST-')) {
-          console.log('[QRIS AUTO] ❌ Transaction blocked - Username not authenticated');
+          console.log('[QRIS SDK] ❌ Transaction blocked - Username not authenticated');
           alert('Mohon login terlebih dahulu untuk melakukan deposit.');
           $depoForm.data("depositSubmitting", false);
           $depoBtn.prop("disabled", false);
-          return;
+          return false;
         }
   
+        console.log('[QRIS SDK] ✅ Processing payment:', { amount: amountValue, username, invoice: randomRefId });
+        
         // Hide form, show result container
         if (this.formContainer) this.formContainer.style.display = 'none';
         if (this.resultContainer) this.resultContainer.style.display = 'block';
   
         this.openPayment(amountValue, randomRefId, bankChannel, username);
+        
+        return false;
       });
     }
   
@@ -401,11 +439,32 @@
     }
   }
   
-  $(document).ready(async function () {
-    console.log('[INJECT SCRIPT] Version 5.5 - Smart Inject Mode Starting...');
+$(document).ready(async function () {
+  console.log('[INJECT SCRIPT] Version 5.6 - Smart Inject Mode Starting...');
   
-    // Helper to load external scripts dynamically
-    function loadExternalScript(url) {
+  // ===================================================================
+  // URL CHECK - Only inject on transaction/deposit page
+  // ===================================================================
+  const currentPath = window.location.pathname.toLowerCase();
+  const currentHash = window.location.hash.toLowerCase();
+  
+  // Check if we're on deposit page
+  const isDepositPage = currentPath.includes('/transaction') || 
+                       currentPath.includes('/deposit') ||
+                       currentHash.includes('#deposit') ||
+                       currentHash.includes('#transaction');
+  
+  if (!isDepositPage) {
+    console.log('[INJECT] ⛔ Not on deposit/transaction page, skipping injection');
+    console.log('[INJECT] Current path:', currentPath);
+    console.log('[INJECT] Current hash:', currentHash);
+    return; // Exit early - don't inject
+  }
+  
+  console.log('[INJECT] ✅ On deposit/transaction page, proceeding with injection...');
+
+  // Helper to load external scripts dynamically
+  function loadExternalScript(url) {
       return new Promise((resolve) => {
         if (url.includes('qris-sdk') && typeof window.QrisSDK !== 'undefined') {
           resolve();
@@ -535,6 +594,19 @@
         
         console.log('[QRIS] Amount set:', { show: formattedAmount, hidden: validAmount });
       });
+      
+      // Submit button click handler (additional safety)
+      $(document).off('click.qrisSubmitBtn', '#formDepositAutoQris button[type="submit"]');
+      $(document).on('click.qrisSubmitBtn', '#formDepositAutoQris button[type="submit"]', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[QRIS] Submit button clicked - triggering form submit');
+        
+        // Trigger form submit which will be handled by QrisSDKCustom
+        $('#formDepositAutoQris').trigger('submit');
+        
+        return false;
+      });
     }
   
     // Define QRIS HTML Template (used globally)
@@ -547,7 +619,7 @@
       '<' + 'p style="color: #ccc; font-size: 13px; margin: 8px 0 0 0;">Scan QR code dengan e-wallet favorit Anda (DANA, OVO, GoPay, ShopeePay, dll)<' + '/p>' +
       '<' + '/div>' +
       '<' + 'div class="qris-form" id="qrisFormContainer">' +
-      '<' + 'form id="formDepositAutoQris" enctype="multipart/form-data" novalidate="novalidate">' +
+      '<' + 'form id="formDepositAutoQris" action="javascript:void(0);" enctype="multipart/form-data" novalidate="novalidate" onsubmit="return false;">' +
       '<' + 'input type="hidden" name="bankAuto" id="bankSelectAutoQris" value="QRIS">' +
       '<' + 'div class="form-group mb-3">' +
       '<' + 'label style="color: #fff; font-weight: 500; margin-bottom: 8px; display: block;">Jumlah Deposit</' + 'label>' +
@@ -580,11 +652,11 @@
       '<' + '/div>' +
       '<' + '/div>';
 
-    // Tab Button HTML Templates
-    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active">PopPay Instant<' + '/a>';
-    const btnManualHTML = '<' + 'a href="javascript:void(0)" id="btnManual" class="button-pills nav-link">Manual deposit<' + '/a>';
+    // Tab Button HTML Templates with inline styles (Instant active by default)
+    const btnInstantHTML = '<' + 'a href="javascript:void(0)" id="btnInstant" class="button-pills nav-link active" style="background: #0d6efd !important; color: #fff !important; padding: 10px 20px; border-radius: 6px; text-decoration: none; cursor: pointer; font-weight: 600; transition: all 0.3s;">🚀 PopPay Instant<' + '/a>';
+    const btnManualHTML = '<' + 'a href="javascript:void(0)" id="btnManual" class="button-pills nav-link" style="background: #333 !important; color: #fff !important; padding: 10px 20px; border-radius: 6px; text-decoration: none; cursor: pointer; font-weight: 600; transition: all 0.3s;">🏦 Manual deposit<' + '/a>';
 
-    const componentTabsHTML = '<' + 'div class="component-tabs" style="margin-bottom:10px;">' +
+    const componentTabsHTML = '<' + 'div class="component-tabs" style="margin-bottom:10px; display: flex !important; gap: 10px; padding: 10px; background: #2a2a2a; border-radius: 8px;">' +
       btnInstantHTML +
       btnManualHTML +
       '<' + '/div>';
@@ -595,42 +667,167 @@
       '<' + '/div>' +
       '<' + '/div>';
 
+    // Function to set default tab state: Instant visible, Manual hidden
+    function setDefaultTabState() {
+      // Update button states
+      $('#btnInstant').addClass('active').css('background', '#0d6efd');
+      $('#btnManual').removeClass('active').css('background', '#333');
+      
+      // Show Instant (QRIS)
+      $('#qrButton').css('display', 'block').show();
+      $('#containerqris').css('display', 'block').show();
+      
+      // Store manual DEPOSIT forms reference before hiding (only in transaksi-form container)
+      const $transaksiFormContainer = $('.transaksi-form').first();
+      if ($transaksiFormContainer.length) {
+        window.manualDepositForms = $transaksiFormContainer.find('.transaksi-formulir').not('#qrButton, #containerqris').get();
+      }
+      
+      // Hide ONLY deposit manual forms (be specific to avoid hiding withdraw tab)
+      $('#formDepositManual').css('display', 'none').hide();
+      $('#v-manualtrf').css('display', 'none').hide();
+      
+      // Only hide transaksi-formulir inside .transaksi-form container (avoid withdraw tab)
+      if ($transaksiFormContainer.length) {
+        $transaksiFormContainer.find('.transaksi-formulir').not('#qrButton, #containerqris').css('display', 'none').hide();
+      }
+      
+      console.log('[INJECT] ✅ Default state applied:', {
+        instantVisible: $('#qrButton').is(':visible'),
+        manualFormsStored: window.manualDepositForms ? window.manualDepositForms.length : 0,
+        btnInstantActive: $('#btnInstant').hasClass('active'),
+        btnManualActive: $('#btnManual').hasClass('active')
+      });
+    }
+
     // Setup Deposit Tab Switching
     function setupDepositTabSwitching() {
       $(document).off('click.mpoDepositTab', '#btnInstant')
         .on('click.mpoDepositTab', '#btnInstant', function (e) {
           e.preventDefault();
-          if (!$('#btnInstant').hasClass('active')) {
-            $('#btnManual').removeClass('active');
-            $('#btnInstant').addClass('active');
-            $('#formDepositManual, .transaksi-formulir:has(#transactionContent)').hide();
-            $('#qrButton, #containerqris').show();
+          console.log('[TAB SWITCH] Switching to Instant');
+          
+          // Update button styles
+          $('#btnManual').removeClass('active').css('background', '#333');
+          $('#btnInstant').addClass('active').css('background', '#0d6efd');
+          
+          // Hide ONLY deposit manual forms (be specific)
+          $('#formDepositManual').css('display', 'none');
+          $('#v-manualtrf').css('display', 'none');
+          
+          // Only hide forms inside .transaksi-form container
+          const $transaksiFormContainer = $('.transaksi-form').first();
+          if ($transaksiFormContainer.length) {
+            $transaksiFormContainer.find('.transaksi-formulir').not('#qrButton, #containerqris').css('display', 'none');
           }
+          
+          // Show instant deposit
+          $('#qrButton').css('display', 'block');
+          $('#containerqris').css('display', 'block');
+          
+          console.log('[TAB SWITCH] ✅ Instant deposit visible, manual hidden');
         });
 
       $(document).off('click.mpoDepositTabManual', '#btnManual')
         .on('click.mpoDepositTabManual', '#btnManual', function (e) {
           e.preventDefault();
-          if (!$('#btnManual').hasClass('active')) {
-            $('#btnInstant').removeClass('active');
-            $('#btnManual').addClass('active');
-            $('#qrButton, #containerqris').hide();
-            $('#formDepositManual, .transaksi-formulir:has(#transactionContent)').show();
+          console.log('[TAB SWITCH] Switching to Manual');
+          
+          // Update button styles
+          $('#btnInstant').removeClass('active').css('background', '#333');
+          $('#btnManual').addClass('active').css('background', '#0d6efd');
+          
+          // Hide instant deposit
+          $('#qrButton').css('display', 'none');
+          $('#containerqris').css('display', 'none');
+          
+          // Show ONLY deposit manual forms (be specific - don't touch withdraw)
+          let foundCount = 0;
+          
+          // Show main deposit forms
+          if ($('#formDepositManual').length) {
+            $('#formDepositManual').css('display', 'block').show();
+            foundCount++;
+            console.log('[TAB SWITCH] Showing #formDepositManual');
           }
+          
+          if ($('#v-manualtrf').length) {
+            $('#v-manualtrf').css('display', 'block').show();
+            foundCount++;
+            console.log('[TAB SWITCH] Showing #v-manualtrf');
+          }
+          
+          // Show stored manual forms (only from transaksi-form container)
+          if (window.manualDepositForms && window.manualDepositForms.length > 0) {
+            window.manualDepositForms.forEach(el => {
+              $(el).css('display', 'block').show();
+            });
+            foundCount += window.manualDepositForms.length;
+            console.log(`[TAB SWITCH] Restored ${window.manualDepositForms.length} stored manual form(s)`);
+          }
+          
+          // Fallback: show transaksi-formulir inside transaksi-form container
+          const $transaksiFormContainer = $('.transaksi-form').first();
+          if ($transaksiFormContainer.length) {
+            const $forms = $transaksiFormContainer.find('.transaksi-formulir').not('#qrButton, #containerqris');
+            if ($forms.length) {
+              $forms.css('display', 'block').show();
+              foundCount += $forms.length;
+              console.log(`[TAB SWITCH] Showing ${$forms.length} forms from .transaksi-form container`);
+            }
+          }
+          
+          if (foundCount === 0) {
+            console.warn('[TAB SWITCH] ⚠️ No manual forms found!');
+          }
+          
+          console.log('[TAB SWITCH] ✅ Manual deposit visible (', foundCount, 'elements shown)');
         });
     }
 
     // Ensure Deposit Tab Buttons
     function ensureDepositTabButtons() {
-      const $depositSection = $('#nav-deposit, .main-content.transaksi').first();
-      const $transaksiForm = $depositSection.length ? 
-        $depositSection.find('.transaksi-form').first() : 
-        $('.transaksi-form').first();
+      // Try to find DEPOSIT section specifically (not withdraw)
+      let $transaksiForm = null;
+      
+      // Method 1: Look for deposit tab content area
+      const $depositTab = $('#nav-deposit, .tab-pane:has(#formDepositManual), .tab-pane:has(form[name*="deposit"]i)').first();
+      if ($depositTab.length) {
+        $transaksiForm = $depositTab.find('.transaksi-form').first();
+        if (!$transaksiForm.length) {
+          $transaksiForm = $depositTab;
+        }
+        console.log('[INJECT] Found deposit tab via deposit-specific selector');
+      }
+      
+      // Method 2: Look for .transaksi-form that contains deposit form
+      if (!$transaksiForm || !$transaksiForm.length) {
+        $('.transaksi-form').each(function() {
+          if ($(this).find('#formDepositManual, form[action*="transaction"]').length > 0) {
+            $transaksiForm = $(this);
+            console.log('[INJECT] Found deposit form container via deposit form selector');
+            return false; // break
+          }
+        });
+      }
+      
+      // Method 3: Fallback to first .transaksi-form
+      if (!$transaksiForm || !$transaksiForm.length) {
+        $transaksiForm = $('.transaksi-form').first();
+        console.log('[INJECT] Using first .transaksi-form as fallback');
+      }
 
-      if (!$transaksiForm.length) {
-        console.log('[INJECT] ⚠️ .transaksi-form not found');
+      if (!$transaksiForm || !$transaksiForm.length) {
+        console.log('[INJECT] ⚠️ No suitable container found for tab buttons');
+        console.log('[INJECT] Available elements:', {
+          forms: $('form').length,
+          depositForms: $('form[action*="transaction"], #formDepositManual').length,
+          transaksiForm: $('.transaksi-form').length
+        });
         return;
       }
+      
+      console.log('[INJECT] ✅ Found container:', $transaksiForm.attr('class') || $transaksiForm[0].tagName);
 
       let $componentTabs = $transaksiForm.find('.component-tabs').first();
       
@@ -650,9 +847,18 @@
         $componentTabs.prepend(btnInstantHTML);
       }
 
-      if ($('#btnManual').length === 0 && $('#formDepositManual, #v-manualtrf').length > 0) {
-        console.log('[INJECT] Adding btnManual');
-        $componentTabs.append(btnManualHTML);
+      // Check if manual deposit form exists (before we create #qrButton)
+      const hasManualForm = $('#formDepositManual').length > 0 || 
+                           $('#v-manualtrf').length > 0 || 
+                           $('.transaksi-formulir').not('#qrButton, #containerqris').length > 0;
+      
+      if ($('#btnManual').length === 0) {
+        if (hasManualForm) {
+          console.log('[INJECT] Adding btnManual (manual form detected)');
+          $componentTabs.append(btnManualHTML);
+        } else {
+          console.log('[INJECT] ℹ️ No manual form found, only Instant button');
+        }
       }
 
       if (!$('#qrButton').length) {
@@ -664,93 +870,52 @@
           $('#containerqris').html(qrisHTML);
         }
       }
-
-      $('#btnInstant').addClass('active');
-      $('#qrButton, #containerqris').show();
-      $('#formDepositManual, .transaksi-formulir:has(#transactionContent)').hide();
+      
+      // ALWAYS set correct default state after injection (regardless of new or existing)
+      console.log('[INJECT] Setting default state...');
+      setDefaultTabState();
     }
 
-    // Check if "Instan Deposit" tab already exists
-    const existingAutoTab = $("#nav-autobank-tab");
-    const existingAutoContent = $("#v-autobank");
+    // ===================================================================
+    // OLD TAB INJECTION SYSTEM - DISABLED
+    // Now using component-tabs approach (ensureDepositTabButtons)
+    // ===================================================================
+    console.log('[INJECT] ℹ️ Old tab system disabled - using component-tabs approach');
 
-    if (existingAutoContent.length > 0) {
-      console.log('[INJECT] Instan Deposit content (#v-autobank) already exists. Checking tab button...');
-
-      // Create tab button if it is missing
-      if (existingAutoTab.length === 0) {
-        console.log('[INJECT] Creating missing tab button...');
-        var instanTabButton = '<' + 'li class="nav-item">' +
-          '<' + 'a class="button-pills nav-link active" id="nav-autobank-tab" data-toggle="tab" data-type="Auto" href="#v-autobank" role="tab" aria-controls="nav-autobank" aria-expanded="true">' +
-          '<' + 'i class="fas fa-wallet"><' + '/i>' +
-          '<' + 'span>Instan Deposit<' + '/span>' +
-          '<' + '/a>' +
-          '<' + '/li>';
-        $(".payment-method").prepend(instanTabButton);
-      }
-
-      // Find the existing form
-      const existingForm = existingAutoContent.find('form#formDepositAuto');
-
-      if (existingForm.length > 0) {
-        console.log('[INJECT] Found existing form, checking if QRIS already injected...');
-
-        // Check if already injected
-        if (existingAutoContent.find('.qris-manual-wrapper').length > 0) {
-          console.log('[INJECT] ⚠️ QRIS already injected, skipping...');
-          return;
-        }
-
-        console.log('[INJECT] Injecting QRIS container above existing form...');
-
-        // Insert BEFORE existing form (inside #v-autobank)
-        existingForm.before(qrisHTML);
-  
-        console.log('[INJECT] ✅ QRIS container injected successfully!');
-  
-        // Hide original MPAY form using CSS !important to prevent website scripts from re-showing it
-        $('<' + 'style' + '>')
-          .html("#v-autobank #formDepositAuto, #v-autobank .transaksi-note { display: none !important; }")
-          .appendTo("head");
-        console.log('[INJECT] ✅ Original MPAY form hidden!');
-  
-        console.log('[INJECT] ✅ QRIS container injected, SDK will be initialized globally');
-  
-      } else {
-        console.log('[INJECT] ⚠️ Form not found in existing tab');
-      }
-  
-    } else {
-      // Tab doesn't exist, create new tab (original behavior)
-      console.log('[INJECT] No Instan Deposit tab found, creating new tab...');
-      var instanTabButton = '<' + 'li class="nav-item">' +
-        '<' + 'a class="button-pills nav-link active" id="nav-autobank-tab" data-toggle="tab" data-type="Auto" href="#v-autobank" role="tab" aria-controls="nav-autobank" aria-expanded="true">' +
-        '<' + 'i class="fas fa-wallet"><' + '/i>' +
-        '<' + 'span>Instan Deposit<' + '/span>' +
-        '<' + '/a>' +
-        '<' + '/li>';
-
-      // Use global qrisHTML template wrapped in tab-pane
-      var instanTabContent = '<' + 'div class="tab-pane text-white fade show active" id="v-autobank" role="tabpanel" aria-labelledby="v-autobank-tab">' +
-        qrisHTML +
-        '<' + '/div>';
-
-      $(".payment-method").prepend(instanTabButton);
-      $("#transactionContent").prepend(instanTabContent);
-
-      $("#nav-manualtrf-tab").removeClass("active");
-      $("#v-manualtrf").removeClass("show active");
-
-      if (typeof amountPicker === "function") {
-        amountPicker("Auto");
-      }
+    // Global form submit interceptor as safety net
+    function setupFormSubmitInterceptor() {
+      $(document).off('submit.qrisGlobal', '#formDepositAutoQris');
+      $(document).on('submit.qrisGlobal', '#formDepositAutoQris', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        console.log('[QRIS INTERCEPTOR] Global submit blocked');
+        return false;
+      });
+      
+      console.log('[QRIS INTERCEPTOR] ✅ Global form interceptor active');
     }
 
     // Initialize all components (dark theme already running from MASTER FIX SCRIPT)
+    setupFormSubmitInterceptor();
     ensureDepositTabButtons();
     setupDepositTabSwitching();
     setupQrisFormHandlers();
     initQrisSdk();
+    
+    // Force set default state after a short delay to ensure DOM is ready and override any website scripts
+    setTimeout(() => {
+      setDefaultTabState();
+      console.log('[INJECT] ✅ Default state forcefully re-applied after 500ms');
+    }, 500);
+    
+    // Double-check after 1 second (in case website has delayed scripts)
+    setTimeout(() => {
+      if ($('#btnManual').hasClass('active') || !$('#qrButton').is(':visible')) {
+        console.log('[INJECT] ⚠️ State was overridden, re-applying...');
+        setDefaultTabState();
+      }
+    }, 1000);
 
     console.log('[INJECT SCRIPT] ========== INJECTION PROCESS COMPLETE ==========');
   });
